@@ -1,0 +1,103 @@
+# Cluster Analysis for Penguin Species
+
+# Load Necessary Libraries
+library(dplyr)
+library(dendextend)
+library(ggplot2)
+library(corrplot)
+
+# Load Data
+penguin = read.csv(file.choose(), header=T)
+
+# Explore Data
+str(penguin)
+head(penguin)
+summary(penguin)
+dim(penguin)
+sum(is.na(penguin))
+
+# Data Cleaning
+penguin = na.omit(penguin)
+penguin = penguin[,-5] # Sex column is dropped since it's a categorical variable
+
+# Scale Data
+scaled = scale(penguin)
+
+# Plot correlation Matrix Chart
+cor_matrix = cor(penguin, use = "complete.obs")
+corrplot(cor_matrix, method = "color", type = "upper", addCoef.col = "black",
+         tl.col = "black", tl.srt = 45, title = "Correlation Matrix", mar = c(1,1,1,1))
+# The variables are mostly independent of each other. This would help in reducing the biasness in clustering.
+
+# Determine the number of clusters
+wcss <- numeric(20)  # Store WCSS values for k = 1 to 20
+for (k in 1:20) {
+  kmeans_result <- kmeans(scaled, centers = k, nstart = 25)
+  wcss[k] <- kmeans_result$tot.withinss  # Total within-cluster sum of squares
+}
+
+# Plot the Elbow Method
+elbow_plot <- data.frame(k = 1:20, WCSS = wcss)
+ggplot(elbow_plot, aes(x = k, y = WCSS)) +
+  geom_line() + geom_point() +
+  ggtitle("Elbow Method for Optimal K") +
+  xlab("Number of Clusters (k)") +
+  ylab("Within-Cluster Sum of Squares") +
+  theme_minimal()
+
+# K-means clustering for k=4
+k4 = kmeans(scaled, 4)
+
+# K-means clustering for k=5
+k5 = kmeans(scaled, 5)
+
+# The sizes of clusters for k=5 makes more sense with the dataset that we have.
+
+# Combine with main data
+clus = cbind(penguin, cluster4 = k4$cluster, cluster5 = k5$cluster)
+head(clus)
+
+# Visualize the clusters
+par(mfrow=c(1,2))
+plot(clus$culmen_length_mm, clus$body_mass_g, col=clus$cluster4,
+     main="Four Clusters")
+plot(clus$culmen_length_mm, clus$body_mass_g, col=clus$cluster5,
+     main="Five Clusters")
+
+# Pick cluster
+#Four clusters are the better choice as they provide clearer separation, 
+#+ balanced distribution, and better interpretability.
+
+----
+
+# Hierachical Clustering
+hc = hclust(dist(scaled), method="ward.D2")
+dend = as.dendrogram(hc)
+dend_five_color = color_branches(dend, k=5)
+plot(dend_five_color, leaflab = "none", horiz=TRUE, main="Penguin Dendrogram", xlab="Height")
+abline(v=10, lty='dashed', col='blue')
+
+h6 = cutree(dend, k=6)
+k6 = kmeans(scaled, 6)
+
+# Plot to choose clusters
+par(mfrow=c(2,1))
+plot(penguin$culmen_length_mm, penguin$body_mass_g, col=k6$cluster, main="6-KMeans")
+plot(penguin$culmen_length_mm, penguin$body_mass_g, col=h6, main="6-HClust")
+
+# Since the HClust plot shows more natural grouping, and hierarchical clustering works better 
+#+ for non-spherical clusters.
+
+# Reporting
+penguin$dend6 = h6
+Report = as.data.frame(penguin %>% group_by(dend6) %>% 
+                         summarise(avg_culmen_length = mean(culmen_length_mm),
+                                   avg_culmen_depth = mean(culmen_depth_mm),
+                                   avg_flipper_length = mean(flipper_length_mm),
+                                   avg_body_mass = mean(body_mass_g)) %>%
+                         rename(Cluster = dend6))
+Report$Label = c("Adélie - Smallest", "Adélie - Larger", "Check Data", 
+                  "Chinstrap", "Gentoo - Medium", "Gentoo - Largest")
+
+# Print updated report
+print(Report)
